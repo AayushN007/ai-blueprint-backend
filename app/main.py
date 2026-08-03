@@ -10,8 +10,11 @@ from app.routes import models
 from app.routes import blueprint
 from app.routes import chat
 from app.routes import download
+from app.routes import auth
+
 
 Base.metadata.create_all(bind=engine)
+
 
 app = FastAPI(
     title="AI Blueprint API",
@@ -37,6 +40,7 @@ app.include_router(models.router)
 app.include_router(blueprint.router)
 app.include_router(chat.router)
 app.include_router(download.router)
+app.include_router(auth.router)
 
 
 @app.get("/")
