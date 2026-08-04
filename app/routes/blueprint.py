@@ -1,9 +1,13 @@
 from fastapi import APIRouter, Depends
+from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
-from app.database import SessionLocal
-from app.models import Project
+from app.database import get_db
+from app.auth import get_current_user
+from app.models import User
 from app.services.ai_agent import get_blueprint
+from app.services.history_service import save_project
+
 
 router = APIRouter(
     prefix="/blueprint",
@@ -11,27 +15,31 @@ router = APIRouter(
 )
 
 
-def get_db():
-    db = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
+class BlueprintRequest(BaseModel):
+    project: str
+    dataset: str
+    target: str
+    model: str = "XGBoost"
 
 
 @router.post("/generate")
-def generate_blueprint(db: Session = Depends(get_db)):
+def generate_blueprint(
+    request: BlueprintRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
 
-    blueprint = get_blueprint()
-
-    project = Project(
-        project=blueprint.get("project", ""),
-        dataset=blueprint.get("dataset", ""),
-        target=blueprint.get("target", ""),
-        model=blueprint.get("model", ""),
+    blueprint = get_blueprint(
+        project=request.project,
+        dataset=request.dataset,
+        target=request.target,
+        model_name=request.model
     )
 
-    db.add(project)
-    db.commit()
+    save_project(
+        db=db,
+        blueprint=blueprint,
+        user_id=current_user.id
+    )
 
     return blueprint

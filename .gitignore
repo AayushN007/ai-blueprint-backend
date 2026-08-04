@@ -1,1 +1,19 @@
 .env
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+
+# Database
+blueprint.db
+
+# Generated files
+blueprint.json
+
+# macOS
+.DS_Store
+
+# Virtual environments
+venv/
+.venv/

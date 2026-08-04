@@ -1,26 +1,27 @@
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy.orm import Session
+from pydantic import BaseModel
+from typing import Optional
 
-router = APIRouter(
-    prefix="/datasets",
-    tags=["Datasets"]
-)
+from app.database import get_db
+from app.dependencies import get_current_user
+from app.models import User
+from app.services.ai_agent import get_dataset_recommendations
+
+router = APIRouter(prefix="/datasets", tags=["Datasets"])
+
+class DatasetRecommendRequest(BaseModel):
+    project: str
+    target: Optional[str] = None
 
 @router.post("/recommend")
-def recommend_dataset():
-
-    return {
-        "datasets": [
-            {
-                "name":"Student Performance Dataset",
-                "url":"https://www.kaggle.com/datasets/spscientist/students-performance-in-exams"
-            },
-            {
-                "name":"UCI Student Dataset",
-                "url":"https://archive.ics.uci.edu/ml/datasets/student+performance"
-            },
-            {
-                "name":"Academic Success Dataset",
-                "url":"https://www.openml.org/"
-            }
-        ]
-    }
+def recommend_datasets(
+    request: DatasetRecommendRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    try:
+        result = get_dataset_recommendations(request.project, request.target)
+        return result
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))

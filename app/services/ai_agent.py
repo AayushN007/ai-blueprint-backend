@@ -1,120 +1,297 @@
-from app.services.gemini_service import ask_gemini
+import os
 import json
-import re
-from app.database import SessionLocal
-from app.services.history_service import save_project
+import logging
+from dotenv import load_dotenv
+import google.generativeai as genai
+
+load_dotenv()
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
+model = genai.GenerativeModel("gemini-2.5-flash")
 
 
-conversation_history = []
+def clean_json(text: str):
+    text = text.strip()
 
-blueprint = {
-    "project": "",
-    "dataset": "",
-    "target": "",
-    "model": "XGBoost"
-}
+    if text.startswith("```json"):
+        text = text[7:]
+
+    if text.startswith("```"):
+        text = text[3:]
+
+    if text.endswith("```"):
+        text = text[:-3]
+
+    return text.strip()
 
 
-def generate_ai_response(message: str):
-
-    global conversation_history
-    global blueprint
-
-    conversation_history.append(
-        f"User: {message}"
-    )
+def get_blueprint(project: str, dataset: str, target: str, model_name: str):
 
     prompt = f"""
-You are an expert Machine Learning Architect.
+You are a senior machine learning architect.
 
-Conversation:
-{chr(10).join(conversation_history)}
+Generate a COMPLETE production-ready ML blueprint.
 
-Your task:
-Collect:
-1. Project name
-2. Dataset information
-3. Prediction target
+PROJECT:
+{project}
 
-Rules:
-- Infer project name automatically.
-- Ask only one question at a time.
-- Do not ask for project name.
-- When enough information is available write:
+DATASET:
+{dataset}
 
-BLUEPRINT_READY
+TARGET:
+{target}
 
-Then provide JSON:
+MODEL:
+{model_name}
+
+Return ONLY VALID JSON.
 
 {{
-"project":"",
-"dataset":"",
-"target":"",
-"model":"XGBoost"
+  "project_name": "",
+  "problem_type": "",
+  "goal": "",
+
+  "dataset": {{
+    "name": "",
+    "description": "",
+    "source": "",
+    "size_estimate": "",
+    "preprocessing_steps": []
+  }},
+
+  "target_column": "",
+
+  "feature_engineering": [],
+
+  "model": {{
+    "name": "",
+    "library": "",
+    "hyperparameters": {{}},
+    "training_steps": []
+  }},
+
+  "evaluation_metrics": [],
+
+  "pipeline_steps": [],
+
+  "deployment_suggestions": [],
+
+  "next_steps": []
 }}
 """
 
-    reply = ask_gemini(prompt)
+    try:
+        response = model.generate_content(prompt)
 
-    ready = False
+        data = json.loads(clean_json(response.text))
 
-    if "BLUEPRINT_READY" in reply:
+        return data
 
-        ready = True
+    except Exception as e:
+        logger.error(f"Blueprint generation error: {e}")
 
-        try:
-            match = re.search(
-                r"\{[\s\S]*\}",
-                reply
-            )
+        return {
+            "project_name": project,
+            "problem_type": "Unknown",
+            "goal": "",
 
-            if match:
-                data = json.loads(match.group())
-                blueprint.update(data)
-                db = SessionLocal()
-                save_project(db, blueprint)
-                db.close()
+            "dataset": {
+                "name": dataset,
+                "description": "",
+                "source": "",
+                "size_estimate": "",
+                "preprocessing_steps": []
+            },
 
-        except Exception:
-            pass
+            "target_column": target,
 
+            "feature_engineering": [],
 
-        reply = reply.split(
-            "BLUEPRINT_READY"
-        )[0].strip()
+            "model": {
+                "name": model_name,
+                "library": "",
+                "hyperparameters": {},
+                "training_steps": []
+            },
 
+            "evaluation_metrics": [],
 
-        if not reply:
-            reply = (
-                "Excellent! Your AI blueprint is ready."
-            )
+            "pipeline_steps": [],
 
+            "deployment_suggestions": [],
 
-    conversation_history.append(
-        f"Assistant: {reply}"
-    )
-
-
-    return {
-        "reply": reply,
-        "blueprint_ready": ready
-    }
+            "next_steps": []
+        }
 
 
+def get_dataset_recommendations(project: str, target: str = None):
 
-def get_blueprint():
+    prompt = f"""
+Recommend exactly 5 REAL datasets for this ML project.
 
-    return {
-        "project": blueprint["project"],
-        "dataset": blueprint["dataset"],
-        "target": blueprint["target"],
-        "model": blueprint["model"],
-        "pipeline": [
-            "Data Collection",
-            "Data Cleaning",
-            "Feature Engineering",
-            "Model Training",
-            "Model Evaluation",
-            "Deployment"
-        ]
-    }
+Project:
+{project}
+
+Target:
+{target}
+
+Return ONLY valid JSON.
+
+{{
+  "datasets": [
+    {{
+      "name": "",
+      "source": "",
+      "description": "",
+      "why_fit": "",
+      "size": "",
+      "link": ""
+    }}
+  ]
+}}
+"""
+
+    try:
+        response = model.generate_content(prompt)
+
+        return json.loads(
+            clean_json(response.text)
+        )
+
+    except Exception as e:
+        logger.error(f"Dataset recommendation error: {e}")
+
+        return {"datasets": []}
+
+
+def get_model_recommendations(
+    project: str,
+    dataset: str = None,
+    target: str = None
+):
+
+    prompt = f"""
+Recommend exactly 5 ML models.
+
+Project:
+{project}
+
+Dataset:
+{dataset}
+
+Target:
+{target}
+
+Return ONLY valid JSON.
+
+{{
+  "models": [
+    {{
+      "name": "",
+      "type": "",
+      "library": "",
+      "reason": "",
+      "pros": "",
+      "cons": ""
+    }}
+  ]
+}}
+"""
+
+    try:
+        response = model.generate_content(
+            prompt
+        )
+
+        return json.loads(
+            clean_json(response.text)
+        )
+
+    except Exception as e:
+        logger.error(f"Model recommendation error: {e}")
+
+        return {"models": []}
+
+from app.services.history_service import save_project
+
+def generate_ai_response(message, db, user_id):
+    prompt = f"""
+You are an expert AI Machine Learning Architect.
+
+The user says:
+
+{message}
+
+From the user's request, identify:
+
+1. Project name
+2. Dataset
+3. Target column
+4. Best ML model
+
+Then generate a complete ML blueprint.
+
+Return ONLY valid JSON in this format:
+
+{{
+  "project_name": "",
+  "problem_type": "",
+  "goal": "",
+
+  "dataset": {{
+    "name": "",
+    "description": "",
+    "source": "",
+    "size_estimate": "",
+    "preprocessing_steps": []
+  }},
+
+  "target_column": "",
+
+  "feature_engineering": [],
+
+  "model": {{
+    "name": "",
+    "library": "",
+    "hyperparameters": {{}},
+    "training_steps": []
+  }},
+
+  "evaluation_metrics": [],
+
+  "pipeline_steps": [],
+
+  "deployment_suggestions": [],
+
+  "next_steps": []
+}}
+"""
+
+    try:
+        response = model.generate_content(prompt)
+
+        blueprint = json.loads(
+            clean_json(response.text)
+        )
+
+        save_project(
+            db=db,
+            blueprint=blueprint,
+            user_id=user_id
+        )
+
+        return {
+            "reply": "Blueprint generated successfully.",
+            "blueprint_ready": True,
+            "blueprint": blueprint
+        }
+
+    except Exception as e:
+        logger.error(e)
+
+        return {
+            "error": str(e)
+        }

@@ -1,8 +1,6 @@
-from passlib.context import CryptContext
-from jose import jwt, JWTError
-from datetime import datetime, timedelta
 from fastapi import Depends, HTTPException
 from fastapi.security import OAuth2PasswordBearer
+from jose import jwt
 from sqlalchemy.orm import Session
 from app.database import SessionLocal
 from app.models import User
@@ -11,35 +9,12 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-SECRET_KEY = os.getenv("SECRET_KEY")
-ALGORITHM = "HS256"
-
-pwd_context = CryptContext(
-    schemes=["bcrypt"],
-    deprecated="auto"
-)
-
 oauth2_scheme = OAuth2PasswordBearer(
     tokenUrl="/auth/login"
 )
 
-def hash_password(password: str):
-    return pwd_context.hash(password)
-
-def verify_password(password: str, hashed: str):
-    return pwd_context.verify(password, hashed)
-
-def create_access_token(data: dict):
-    to_encode = data.copy()
-    expire = datetime.utcnow() + timedelta(hours=12)
-    to_encode.update({
-        "exp": expire
-    })
-    return jwt.encode(
-        to_encode,
-        SECRET_KEY,
-        algorithm=ALGORITHM
-    )
+SECRET_KEY = os.getenv("SECRET_KEY")
+ALGORITHM = "HS256"
 
 def get_db():
     db = SessionLocal()
@@ -59,12 +34,7 @@ def get_current_user(
             algorithms=[ALGORITHM]
         )
         user_id = payload.get("user_id")
-        if user_id is None:
-            raise HTTPException(
-                status_code=401,
-                detail="Invalid token"
-            )
-    except JWTError:
+    except:
         raise HTTPException(
             status_code=401,
             detail="Invalid token"
@@ -72,7 +42,7 @@ def get_current_user(
     user = db.query(User).filter(
         User.id == user_id
     ).first()
-    if user is None:
+    if not user:
         raise HTTPException(
             status_code=401,
             detail="User not found"

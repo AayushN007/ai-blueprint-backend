@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, ForeignKey
+from sqlalchemy import Column, Integer, String, ForeignKey, Text
 from sqlalchemy.orm import relationship
 
 from app.database import Base
@@ -24,6 +24,8 @@ class Project(Base):
     dataset = Column(String, nullable=False)
     target = Column(String, nullable=False)
     model = Column(String, nullable=False)
+
+    blueprint_json = Column(Text, nullable=True)
 
     user_id = Column(Integer, ForeignKey("users.id"))
 
